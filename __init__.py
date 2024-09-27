@@ -17,6 +17,32 @@ def fill_background(image):
     return image
 
 
+NUM_RGB_CHANNELS = 3
+MONO_CHANNEL_DIMENSIONS = 2
+NUM_MULTI_CHANNEL_DIMENSIONS = 3
+
+def convert_image_to_pil(image: np.ndarray) -> Image:
+    """Convert a NumPy array image to a PIL image."""
+    try:
+        from PIL import Image
+    except ImportError:
+        raise ImportError("Pillow is not installed") from ImportError
+
+    if len(image.shape) == MONO_CHANNEL_DIMENSIONS:  # (height, width)
+        return Image.fromarray(image)
+    if len(image.shape) == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == 1:  # (height, width, 1)
+        return Image.fromarray(image[:, :, 0], mode="L")
+    if len(image.shape) == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == NUM_RGB_CHANNELS:  # (height, width, 3)
+        return Image.fromarray(image)
+    if len(image.shape) == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == 4:
+        return Image.fromarray(image[:, :, :3])
+    if len(image.shape) == NUM_MULTI_CHANNEL_DIMENSIONS and image.shape[2] == 5:
+        return Image.fromarray(image[:, :, :4])
+
+    raise TypeError(f"Unsupported image shape: {image.shape}")
+
+
+
 class TripoSRModelLoader:
     def __init__(self):
         self.initialized_model = None
@@ -88,8 +114,12 @@ class TripoSRSampler:
             image = torch.cat((image, mask), dim=2).detach().cpu().numpy()
         else:
             image = image.detach().cpu().numpy()
-
-        image = Image.fromarray(np.clip(255. * image, 0, 255).astype(np.uint8))
+        # RB: Fix potential issue with batch size and clip vision
+        #if len(image.shape) == 3:
+        #    image = image[0]
+        clip = np.clip(255. * image, 0, 255).astype(np.uint8)
+        #image = Image.fromarray(clip)
+        image = convert_image_to_pil(clip)
         if reference_mask is not None:
             image = fill_background(image)
         image = image.convert('RGB')
